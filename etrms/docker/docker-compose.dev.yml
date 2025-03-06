@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/backend/Dockerfile.dev
+    volumes:
+      - ../backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=etrms
+      - DB_USER=etrms_user
+      - DB_PASSWORD=etrms_password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_SECRET_KEY=dev_secret_key
+      - JWT_SECRET=dev_jwt_secret
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION_MINUTES=1440
+      - BINANCE_TESTNET=true
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - etrms-network
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend/Dockerfile.dev
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    networks:
+      - etrms-network
+    command: npm run dev
+
+  postgres:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      - POSTGRES_USER=etrms_user
+      - POSTGRES_PASSWORD=etrms_password
+      - POSTGRES_DB=etrms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - etrms-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - etrms-network
+
+networks:
+  etrms-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data: 
