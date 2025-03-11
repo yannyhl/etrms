@@ -1,10 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Tab } from '@headlessui/react';
-import axios from 'axios';
-import { ChartBarIcon, CogIcon, ArrowPathIcon, ChartPieIcon, BeakerIcon } from '@heroicons/react/24/outline';
+import {
+  Box,
+  Typography,
+  Paper,
+  Tabs,
+  Tab,
+  Grid,
+  CircularProgress,
+  Alert
+} from '@mui/material';
+import {
+  BarChart as BarChartIcon,
+  Settings as SettingsIcon,
+  Refresh as RefreshIcon,
+  PieChart as PieChartIcon,
+  Science as ScienceIcon
+} from '@mui/icons-material';
+import { useApi } from '../hooks/useApi';
 import { API_BASE_URL } from '../config';
 
-// Import custom components that we'll create
+// Import custom components
 import BasicBacktestForm from '../components/backtesting/BasicBacktestForm';
 import BacktestResults from '../components/backtesting/BacktestResults';
 import ParameterOptimizationForm from '../components/backtesting/ParameterOptimizationForm';
@@ -15,8 +30,31 @@ import MonteCarloForm from '../components/backtesting/MonteCarloForm';
 import MonteCarloResults from '../components/backtesting/MonteCarloResults';
 import TasksList from '../components/backtesting/TasksList';
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ');
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`backtesting-tabpanel-${index}`}
+      aria-labelledby={`backtesting-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+function a11yProps(index) {
+  return {
+    id: `backtesting-tab-${index}`,
+    'aria-controls': `backtesting-tabpanel-${index}`,
+  };
 }
 
 function Backtesting() {
@@ -28,8 +66,9 @@ function Backtesting() {
   const [availableStrategies, setAvailableStrategies] = useState([]);
   const [activeMonteCarloTask, setActiveMonteCarloTask] = useState(null);
   const [monteCarloSimulationId, setMonteCarloSimulationId] = useState(null);
+  
+  const { get } = useApi();
 
-  // Fetch backtesting tasks when component mounts
   useEffect(() => {
     fetchTasks();
     fetchStrategies();
@@ -38,11 +77,14 @@ function Backtesting() {
   const fetchTasks = async () => {
     setIsLoading(true);
     try {
-      const response = await axios.get('/api/v1/backtesting/tasks');
-      setTasks(response.data.tasks || []);
+      const response = await get(`${API_BASE_URL}/backtest/tasks`);
+      if (response.status === 'success') {
+        setTasks(response.data || []);
+      } else {
+        setError('Failed to fetch tasks');
+      }
     } catch (err) {
-      console.error('Error fetching tasks:', err);
-      setError('Failed to fetch backtesting tasks. Please try again later.');
+      setError('Error fetching tasks: ' + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -50,8 +92,10 @@ function Backtesting() {
 
   const fetchStrategies = async () => {
     try {
-      const response = await axios.get('/api/v1/backtesting/available-strategies');
-      setAvailableStrategies(response.data || []);
+      const response = await get(`${API_BASE_URL}/strategies`);
+      if (response.status === 'success') {
+        setAvailableStrategies(response.data || []);
+      }
     } catch (err) {
       console.error('Error fetching strategies:', err);
     }
@@ -66,134 +110,171 @@ function Backtesting() {
   };
 
   const handleMonteCarloComplete = (simulationData) => {
-    console.log('Monte Carlo simulation completed:', simulationData);
     setMonteCarloSimulationId(simulationData.monte_carlo_id);
   };
 
-  const tabs = [
-    { name: 'Backtests', icon: ChartBarIcon },
-    { name: 'Parameter Optimization', icon: CogIcon },
-    { name: 'Walk-Forward Analysis', icon: ArrowPathIcon },
-    { name: 'Monte Carlo', icon: ChartPieIcon },
-    { name: 'Tasks', icon: BeakerIcon }
-  ];
+  const handleTabChange = (event, newValue) => {
+    setSelectedTabIndex(newValue);
+  };
 
   return (
-    <div className="py-6 px-4 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Backtesting</h1>
-        <p className="mt-2 text-sm text-gray-700">
+    <Box sx={{ py: 4, px: 2 }}>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Backtesting
+        </Typography>
+        <Typography variant="body1" color="textSecondary">
           Test and optimize your trading strategies with historical data
-        </p>
-      </div>
+        </Typography>
+      </Box>
 
-      <div className="bg-white rounded-lg shadow">
-        <Tab.Group selectedIndex={selectedTabIndex} onChange={setSelectedTabIndex}>
-          <Tab.List className="flex p-1 space-x-1 bg-gray-100 rounded-t-lg">
-            {tabs.map((tab) => (
-              <Tab
-                key={tab.name}
-                className={({ selected }) =>
-                  classNames(
-                    'w-full py-3 px-4 text-sm font-medium rounded-md flex items-center justify-center',
-                    'focus:outline-none focus:ring-2 ring-offset-2 ring-offset-blue-400 ring-blue-500',
-                    selected
-                      ? 'bg-white text-blue-600 shadow'
-                      : 'text-gray-700 hover:bg-gray-200 hover:text-gray-900'
-                  )
-                }
-              >
-                <tab.icon className="mr-2 h-5 w-5" />
-                {tab.name}
-              </Tab>
-            ))}
-          </Tab.List>
-          <Tab.Panels className="p-4">
-            {/* Backtest Tab */}
-            <Tab.Panel>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Configure Backtest</h2>
-                  <BasicBacktestForm 
-                    strategies={availableStrategies} 
-                    onTaskCreated={handleTaskCreated} 
-                  />
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Backtest Results</h2>
-                  <BacktestResults selectedTask={selectedTask} />
-                </div>
-              </div>
-            </Tab.Panel>
+      <Paper sx={{ width: '100%', mb: 2 }}>
+        <Tabs
+          value={selectedTabIndex}
+          onChange={handleTabChange}
+          indicatorColor="primary"
+          textColor="primary"
+          variant="fullWidth"
+          aria-label="Backtesting tabs"
+        >
+          <Tab icon={<BarChartIcon />} label="Backtests" {...a11yProps(0)} />
+          <Tab icon={<SettingsIcon />} label="Parameter Optimization" {...a11yProps(1)} />
+          <Tab icon={<RefreshIcon />} label="Walk-Forward Analysis" {...a11yProps(2)} />
+          <Tab icon={<PieChartIcon />} label="Monte Carlo" {...a11yProps(3)} />
+          <Tab icon={<ScienceIcon />} label="Tasks" {...a11yProps(4)} />
+        </Tabs>
 
-            {/* Parameter Optimization Tab */}
-            <Tab.Panel>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Configure Optimization</h2>
-                  <ParameterOptimizationForm 
-                    strategies={availableStrategies} 
-                    onTaskCreated={handleTaskCreated} 
-                  />
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Optimization Results</h2>
-                  <OptimizationResults selectedTask={selectedTask} />
-                </div>
-              </div>
-            </Tab.Panel>
-
-            {/* Walk-Forward Analysis Tab */}
-            <Tab.Panel>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Configure Walk-Forward Analysis</h2>
-                  <WalkForwardForm 
-                    strategies={availableStrategies} 
-                    onTaskCreated={handleTaskCreated} 
-                  />
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Walk-Forward Results</h2>
-                  <WalkForwardResults selectedTask={selectedTask} />
-                </div>
-              </div>
-            </Tab.Panel>
-
-            {/* Monte Carlo Tab */}
-            <Tab.Panel>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Configure Monte Carlo Simulation</h2>
-                  <MonteCarloForm 
-                    tasks={tasks} 
-                    onTaskCreated={handleTaskCreated} 
-                  />
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-4">Monte Carlo Results</h2>
-                  <MonteCarloResults selectedTask={selectedTask} />
-                </div>
-              </div>
-            </Tab.Panel>
-
-            {/* Tasks Tab */}
-            <Tab.Panel>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h2 className="text-lg font-medium mb-4">Backtesting Tasks</h2>
-                <TasksList 
-                  tasks={tasks} 
-                  isLoading={isLoading} 
-                  error={error} 
-                  onTaskSelect={handleTaskSelect} 
-                  onTasksRefresh={fetchTasks} 
+        {/* Backtest Tab */}
+        <TabPanel value={selectedTabIndex} index={0}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Configure Backtest
+                </Typography>
+                <BasicBacktestForm 
+                  strategies={availableStrategies} 
+                  onSubmit={handleTaskCreated}
+                  loading={isLoading}
                 />
-              </div>
-            </Tab.Panel>
-          </Tab.Panels>
-        </Tab.Group>
-      </div>
-    </div>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Backtest Results
+                </Typography>
+                <BacktestResults selectedTask={selectedTask} />
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Parameter Optimization Tab */}
+        <TabPanel value={selectedTabIndex} index={1}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Configure Optimization
+                </Typography>
+                <ParameterOptimizationForm 
+                  strategies={availableStrategies} 
+                  onSubmit={handleTaskCreated}
+                  loading={isLoading}
+                />
+              </Paper>
+            </Grid>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Optimization Results
+                </Typography>
+                <OptimizationResults selectedTask={selectedTask} />
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Walk-Forward Analysis Tab */}
+        <TabPanel value={selectedTabIndex} index={2}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Configure Walk-Forward Analysis
+                </Typography>
+                <WalkForwardForm 
+                  strategies={availableStrategies} 
+                  onSubmit={handleTaskCreated}
+                  loading={isLoading}
+                />
+              </Paper>
+            </Grid>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Walk-Forward Results
+                </Typography>
+                <WalkForwardResults selectedTask={selectedTask} />
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Monte Carlo Tab */}
+        <TabPanel value={selectedTabIndex} index={3}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Configure Monte Carlo Simulation
+                </Typography>
+                <MonteCarloForm 
+                  tasks={tasks} 
+                  onSubmit={handleTaskCreated}
+                  onComplete={handleMonteCarloComplete}
+                  loading={isLoading}
+                />
+              </Paper>
+            </Grid>
+            <Grid item xs={12} lg={6}>
+              <Paper sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Monte Carlo Results
+                </Typography>
+                <MonteCarloResults 
+                  selectedTask={selectedTask}
+                  simulationId={monteCarloSimulationId}
+                />
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Tasks Tab */}
+        <TabPanel value={selectedTabIndex} index={4}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Backtesting Tasks
+            </Typography>
+            {isLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : error ? (
+              <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+            ) : (
+              <TasksList 
+                tasks={tasks} 
+                onTaskSelect={handleTaskSelect} 
+                onTasksRefresh={fetchTasks} 
+              />
+            )}
+          </Paper>
+        </TabPanel>
+      </Paper>
+    </Box>
   );
 }
 

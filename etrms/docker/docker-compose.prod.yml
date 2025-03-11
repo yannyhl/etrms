@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/backend/Dockerfile.prod
+    restart: always
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=etrms
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_SECRET_KEY=${API_SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION_MINUTES=1440
+      - BINANCE_TESTNET=false
+      - API_BASE_URL=https://riskmanage.xyz/api
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - etrms-network
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend/Dockerfile.prod
+    restart: always
+    networks:
+      - etrms-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ../docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ../frontend/build:/usr/share/nginx/html
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - etrms-network
+    restart: always
+
+  postgres:
+    image: timescale/timescaledb:latest-pg14
+    restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=etrms
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - etrms-network
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis-data:/data
+    networks:
+      - etrms-network
+
+networks:
+  etrms-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data: 

@@ -10,6 +10,7 @@ import Backtesting from './pages/Backtesting';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
+import TestPage from './pages/TestPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -18,6 +19,9 @@ function App() {
       {/* Authentication Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      
+      {/* Test Page - No Authentication Required */}
+      <Route path="/test" element={<TestPage />} />
       
       {/* Protected Routes */}
       <Route path="/" element={

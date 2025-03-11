@@ -12,6 +12,7 @@ The Enhanced Trading Risk Management System (ETRMS) is a comprehensive solution 
 2. **Market Analysis Framework**: Real-time market condition assessment, volume profile analysis, and liquidity mapping
 3. **AI Trading Assistant**: Intelligent trading recommendations, setup identification, and performance analytics
 4. **User Dashboard**: Unified interface for monitoring positions, analyzing market conditions, and configuring risk parameters
+5. **Backtesting Engine**: Comprehensive framework for testing trading strategies and risk management configurations
 
 ## Key Features
 
@@ -20,6 +21,7 @@ The Enhanced Trading Risk Management System (ETRMS) is a comprehensive solution 
 - Quantitative risk management methodologies with behavioral safeguards
 - AI-powered trading assistance based on institutional trading patterns
 - Unified interface for monitoring and controlling all aspects of trading activity
+- Advanced backtesting capabilities for strategy development and risk management optimization
 
 ## Current Development Status
 
@@ -28,10 +30,11 @@ The Enhanced Trading Risk Management System (ETRMS) is a comprehensive solution 
 - Project structure and architecture
 - Comprehensive documentation
 - API route definitions
+- Backtesting module with full integration with risk management
+- Exchange API integration for Binance Futures and Hyperliquid
 
 ### Components In Progress
 - Data models implementation
-- Exchange API integration
 - Core risk engine functionality
 - Backend API endpoints
 
@@ -139,8 +142,19 @@ ETRMS is designed to be used alongside your real-time trading activities. The sy
 2. **Position Monitoring** - Track all positions across exchanges in a unified interface
 3. **AI-Driven Insights** - Get intelligent trading recommendations and market analysis
 4. **Performance Analytics** - Analyze your trading performance with detailed metrics
+5. **Comprehensive Backtesting** - Test your trading strategies and risk management configurations before deploying them in live trading
 
-For a complete guide on how to integrate ETRMS into your trading workflow, please refer to our [Usage Guide](docs/USAGE_GUIDE.md).
+### Backtesting Module
+
+The backtesting module allows you to:
+
+- Test trading strategies with historical data
+- Evaluate the effectiveness of circuit breaker configurations
+- Optimize strategy parameters for different market conditions
+- Perform Monte Carlo simulations to assess strategy robustness
+- Analyze performance metrics and risk characteristics
+
+For detailed instructions on using the backtesting module, see the [Backtesting Guide](backend/exchange/backtesting/README.md).
 
 ## Contributing
 
@@ -148,4 +162,19 @@ Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details on ou
 
 ## License
 
-This project is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited. 
+This project is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.
+
+## Production Deployment
+
+The ETRMS system can be deployed to a production environment using Docker and Docker Compose. A comprehensive deployment guide and automated deployment script are provided to simplify the process.
+
+### Quick Deployment to riskmanage.xyz
+
+1. Ensure your server has Docker and Docker Compose installed
+2. Clone this repository to your server
+3. Run the deployment script as root:
+   ```bash
+   sudo ./scripts/deploy_production.sh
+   ```
+
+For detailed deployment instructions, see the [Production Deployment Guide](docs/deployment/PRODUCTION_DEPLOYMENT.md). 

@@ -5,10 +5,12 @@ This module provides API routes for authentication, user profile management,
 and API key management for the single-user ETRMS system.
 """
 from datetime import timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 from pydantic import BaseModel, Field
 
 from auth.auth_service import (
@@ -21,6 +23,15 @@ from auth.auth_service import (
 from data.models.user import User, ApiKey
 from data.repositories.user_repository import UserRepository
 from utils.logger import get_logger, log_event
+from etrms.backend.models.user import UserCreate, UserUpdate, PasswordUpdate
+from etrms.backend.services.user_service import UserService
+from etrms.backend.api.dependencies import get_user_service
+from etrms.backend.utils.error_handler import (
+    UnauthorizedException,
+    NotFoundException,
+    BadRequestException,
+    ValidationException
+)
 
 
 # Set up router
@@ -29,6 +40,13 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 # Logger
 logger = get_logger(__name__)
 
+# Security
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+
+# JWT settings
+SECRET_KEY = "YOUR_SECRET_KEY_HERE"  # In production, use environment variable
+ALGORITHM = "HS256"
 
 # Pydantic models for request/response validation
 
@@ -83,133 +101,95 @@ class ApiKeyResponse(BaseModel):
     created_at: str
 
 
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+
+# Helper functions
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+
 # API routes
 
-@router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    Authenticate a user and return an access token.
-    
-    Args:
-        form_data: The login form data
-        
-    Returns:
-        A JWT token for the authenticated user
-        
-    Raises:
-        HTTPException: If authentication fails
-    """
-    user = await authenticate_user(form_data.username, form_data.password)
-    
-    if not user:
+@router.post("/token", response_model=Token)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    user_service: UserService = Depends(get_user_service)
+):
+    try:
+        user = user_service.authenticate_user(form_data.username, form_data.password)
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.username}, expires_delta=access_token_expires
+        )
+        return {"access_token": access_token, "token_type": "bearer"}
+    except UnauthorizedException:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.id},
-        expires_delta=access_token_expires
-    )
-    
-    return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_user_profile(current_user: User = Depends(get_current_user)):
-    """
-    Get the profile of the current authenticated user.
-    
-    Args:
-        current_user: The current authenticated user
-        
-    Returns:
-        The user profile
-    """
-    return current_user.to_dict()
-
-
-@router.put("/me", response_model=UserResponse)
-async def update_user_profile(
-    user_data: UserUpdateRequest,
-    current_user: User = Depends(get_current_user)
+@router.post("/register", response_model=User)
+async def register_user(
+    user_create: UserCreate,
+    user_service: UserService = Depends(get_user_service)
 ):
-    """
-    Update the profile of the current authenticated user.
+    # Check if username already exists
+    existing_user = user_service.get_user_by_username(user_create.username)
+    if existing_user:
+        raise BadRequestException("Username already registered")
     
-    Args:
-        user_data: The updated user data
-        current_user: The current authenticated user
-        
-    Returns:
-        The updated user profile
-    """
-    # Convert request model to dict
-    update_data = user_data.dict(exclude_unset=True)
-    
-    # Update the user
-    user_repo = UserRepository()
-    updated_user = await user_repo.update(current_user.id, update_data)
-    
-    if not updated_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    log_event(
-        logger,
-        "USER_PROFILE_UPDATED",
-        f"User {current_user.username} updated their profile",
-        context={"username": current_user.username}
-    )
-    
-    return updated_user.to_dict()
+    # Create new user
+    hashed_password = get_password_hash(user_create.password)
+    try:
+        user = user_service.create_user(user_create, hashed_password)
+        return user
+    except Exception as e:
+        raise BadRequestException(f"Failed to create user: {str(e)}")
+
+
+@router.get("/me", response_model=User)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.put("/me", response_model=User)
+async def update_user_profile(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service)
+):
+    try:
+        updated_user = user_service.update_user(current_user.id, user_update)
+        return updated_user
+    except NotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.put("/password")
 async def update_password(
-    password_data: PasswordUpdateRequest,
-    current_user: User = Depends(get_current_user)
+    password_update: PasswordUpdate,
+    current_user: User = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service)
 ):
-    """
-    Update the password of the current authenticated user.
-    
-    Args:
-        password_data: The password update data
-        current_user: The current authenticated user
-        
-    Returns:
-        A success message
-        
-    Raises:
-        HTTPException: If the current password is incorrect
-    """
     # Verify current password
-    user = await authenticate_user(current_user.username, password_data.current_password)
+    if not verify_password(password_update.current_password, current_user.hashed_password):
+        raise UnauthorizedException("Current password is incorrect")
     
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Current password is incorrect"
-        )
-    
-    # Update the password
-    user_repo = UserRepository()
-    hashed_password = get_password_hash(password_data.new_password)
-    await user_repo.update_password(current_user.id, hashed_password)
-    
-    log_event(
-        logger,
-        "USER_PASSWORD_UPDATED",
-        f"User {current_user.username} updated their password",
-        context={"username": current_user.username}
-    )
-    
-    return {"message": "Password updated successfully"}
+    # Update password
+    try:
+        hashed_password = get_password_hash(password_update.new_password)
+        user_service.update_password(current_user.id, hashed_password)
+        return {"message": "Password updated successfully"}
+    except NotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # API Key Management
